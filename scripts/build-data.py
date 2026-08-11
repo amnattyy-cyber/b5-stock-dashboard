@@ -1,3 +1,5 @@
+import base64
+import gzip
 import json
 import os
 import sys
@@ -11,16 +13,33 @@ import pandas as pd
 DEFAULT_SOURCE = "https://docs.google.com/spreadsheets/d/1appOkfuCPuReEM63lS5RT3gWt2dD4HB-FGl2_h5Vhrw/export?format=xlsx"
 SOURCE_URL = os.environ.get("STOCK_XLSX_URL", DEFAULT_SOURCE)
 OUTPUT_PATH = Path(os.environ.get("STOCK_OUTPUT", "data/stock.json"))
+MAPPING_PARTS = sorted(Path("config").glob("mappings.part*.b64"))
 
 
 def clean(series, fallback="Unmapped"):
-    return (
+    result = (
         series.fillna(fallback)
         .astype(str)
         .str.strip()
-        .replace("", fallback)
-        .replace(r"\.0$", "", regex=True)
+        .str.replace(r"\.0$", "", regex=True)
     )
+    return result.mask(result.eq(""), fallback)
+
+
+def load_mappings():
+    encoded = "".join(path.read_text(encoding="utf-8").strip() for path in MAPPING_PARTS)
+    if not encoded:
+        raise RuntimeError("Stock mapping files are missing")
+    return json.loads(gzip.decompress(base64.b64decode(encoded)).decode("utf-8"))
+
+
+def fill_from_mapping(df, key_column, target_columns, mapping):
+    keys = clean(df[key_column], "")
+    for target in target_columns:
+        current = df[target]
+        invalid = current.isna() | current.astype(str).str.startswith("#")
+        resolved = keys.map(lambda item: mapping.get(item, {}).get(target))
+        df[target] = current.where(~invalid, resolved)
 
 
 def classify_shop(value):
@@ -52,6 +71,22 @@ def main():
         with urllib.request.urlopen(request, timeout=180) as response:
             workbook.write_bytes(response.read())
         df = pd.read_excel(workbook, sheet_name="Data Stock")
+
+    mappings = load_mappings()
+    fill_from_mapping(df, "SHOP_CODE", ["SHOP", "AREA"], mappings["shopByCode"])
+    fill_from_mapping(
+        df,
+        "PRODUCT_CODE",
+        [
+            "CUSTOM_CATEGORY",
+            "CUSTOM_GROUP_BRAND",
+            "CUSTOM_MODEL",
+            "CUSTOM_SUBMODEL",
+            "PRODUCT_GROUP_GP",
+            "BRAND",
+        ],
+        mappings["productByCode"],
+    )
 
     shop_name = clean(df["SHOP_NAME"])
     shop = clean(df["SHOP"])

@@ -1,4 +1,4 @@
-name: Daily stock refresh
+name: Frequent stock refresh
 
 on:
   push:
@@ -9,7 +9,8 @@ on:
       - "scripts/**"
       - "config/**"
   schedule:
-    - cron: "15 0 * * *"
+    # Every 30 minutes, offset from the hour to reduce scheduler congestion.
+    - cron: "17,47 * * * *"
   workflow_dispatch:
 
 permissions:

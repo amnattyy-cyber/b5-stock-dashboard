@@ -129,11 +129,29 @@ def main():
         )
     )
 
-    payload = {
-        "updatedAt": pd.Timestamp.now(tz=ZoneInfo("Asia/Bangkok")).isoformat(),
+    stock_data = {
         "fields": [name for name, _ in fields],
         "dicts": dictionaries,
         "rows": rows,
+    }
+
+    if OUTPUT_PATH.exists():
+        try:
+            existing = json.loads(OUTPUT_PATH.read_text(encoding="utf-8"))
+            existing_stock_data = {
+                "fields": existing.get("fields"),
+                "dicts": existing.get("dicts"),
+                "rows": existing.get("rows"),
+            }
+            if existing_stock_data == stock_data:
+                print(f"No stock data changes ({len(rows):,} rows)")
+                return
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    payload = {
+        "updatedAt": pd.Timestamp.now(tz=ZoneInfo("Asia/Bangkok")).isoformat(),
+        **stock_data,
     }
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

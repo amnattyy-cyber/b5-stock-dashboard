@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -13,6 +14,8 @@ import pandas as pd
 DEFAULT_SOURCE = "https://docs.google.com/spreadsheets/d/1appOkfuCPuReEM63lS5RT3gWt2dD4HB-FGl2_h5Vhrw/export?format=xlsx"
 SOURCE_URL = os.environ.get("STOCK_XLSX_URL", DEFAULT_SOURCE)
 OUTPUT_PATH = Path(os.environ.get("STOCK_OUTPUT", "data/stock.json"))
+DOWNLOAD_ATTEMPTS = int(os.environ.get("STOCK_DOWNLOAD_ATTEMPTS", "4"))
+DOWNLOAD_TIMEOUT = int(os.environ.get("STOCK_DOWNLOAD_TIMEOUT", "120"))
 MAPPING_PARTS = sorted(Path("config").glob("mappings.part*.b64"))
 
 
@@ -61,15 +64,47 @@ def classify_shop(value):
     return "Unmapped"
 
 
+def download_workbook(destination):
+    last_error = None
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        separator = "&" if "?" in SOURCE_URL else "?"
+        cache_busted_url = (
+            f"{SOURCE_URL}{separator}_refresh={int(time.time())}&attempt={attempt}"
+        )
+        request = urllib.request.Request(
+            cache_busted_url,
+            headers={
+                "User-Agent": "b5-stock-dashboard/1.1",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT) as response:
+                destination.write_bytes(response.read())
+            print(f"Downloaded Google Sheet on attempt {attempt}")
+            return
+        except Exception as exc:
+            last_error = exc
+            if attempt == DOWNLOAD_ATTEMPTS:
+                break
+            delay = min(5 * (2 ** (attempt - 1)), 30)
+            print(
+                f"Google Sheet download attempt {attempt} failed: {exc}; "
+                f"retrying in {delay}s",
+                file=sys.stderr,
+            )
+            time.sleep(delay)
+
+    raise RuntimeError(
+        f"Google Sheet download failed after {DOWNLOAD_ATTEMPTS} attempts: {last_error}"
+    )
+
+
 def main():
     with tempfile.TemporaryDirectory() as temp_dir:
         workbook = Path(temp_dir) / "stock.xlsx"
-        request = urllib.request.Request(
-            SOURCE_URL,
-            headers={"User-Agent": "b5-stock-dashboard/1.0"},
-        )
-        with urllib.request.urlopen(request, timeout=180) as response:
-            workbook.write_bytes(response.read())
+        download_workbook(workbook)
         df = pd.read_excel(workbook, sheet_name="Data Stock")
 
     mappings = load_mappings()

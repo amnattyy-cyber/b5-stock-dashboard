@@ -9,8 +9,11 @@ on:
       - "scripts/**"
       - "config/**"
   schedule:
-    # Every 30 minutes, offset from the hour to reduce scheduler congestion.
-    - cron: "17,47 * * * *"
+    # Poll every 5 minutes, offset from common scheduler peaks.
+    - cron: "3,8,13,18,23,28,33,38,43,48,53,58 * * * *"
+  repository_dispatch:
+    types:
+      - stock_sheet_updated
   workflow_dispatch:
 
 permissions:
@@ -23,7 +26,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Get repository
@@ -40,6 +43,8 @@ jobs:
       - name: Download Google Sheet and build dashboard data
         env:
           STOCK_XLSX_URL: "https://docs.google.com/spreadsheets/d/1appOkfuCPuReEM63lS5RT3gWt2dD4HB-FGl2_h5Vhrw/export?format=xlsx"
+          STOCK_DOWNLOAD_ATTEMPTS: "4"
+          STOCK_DOWNLOAD_TIMEOUT: "120"
         run: python scripts/build-data.py
 
       - name: Publish updated data

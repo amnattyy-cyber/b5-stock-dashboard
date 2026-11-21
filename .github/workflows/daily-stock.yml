@@ -40,9 +40,10 @@ jobs:
       - name: Install data tools
         run: pip install pandas openpyxl
 
-      - name: Download Google Sheet and build dashboard data
+      - name: Download Google Sheets and build dashboard data
         env:
           STOCK_XLSX_URL: "https://docs.google.com/spreadsheets/d/1appOkfuCPuReEM63lS5RT3gWt2dD4HB-FGl2_h5Vhrw/export?format=xlsx"
+          SALES_XLSX_URL: "https://docs.google.com/spreadsheets/d/1qsVJk2DbXW8EInVK7gFIOtCB9-5GdVp5vJhU4hPK29k/export?format=xlsx"
           STOCK_DOWNLOAD_ATTEMPTS: "4"
           STOCK_DOWNLOAD_TIMEOUT: "120"
         run: python scripts/build-data.py
@@ -53,8 +54,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/stock.json
           if git diff --cached --quiet; then
-            echo "No stock data changes"
+            echo "No stock or sales data changes"
           else
-            git commit -m "Update stock data"
+            git commit -m "Update stock and sales data"
             git push
           fi
